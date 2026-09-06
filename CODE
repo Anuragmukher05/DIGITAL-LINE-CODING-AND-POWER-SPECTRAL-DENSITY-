@@ -1,0 +1,881 @@
+function project_6
+%% ================================================================
+% EXPERIMENT 6
+% DIGITAL LINE CODING AND POWER SPECTRAL DENSITY
+% Digital Communication Laboratory
+% ================================================================
+
+clc;
+close all;
+
+%% ------------------------------------------------
+% EXPERIMENT CONSTANTS
+% -------------------------------------------------
+
+A   = 1;
+Tb  = 1;
+L   = 20;
+fs  = L/Tb;
+REF = A^2*Tb;
+
+codes = {'unrz','pnrz','prz','man','dman','ami'};
+
+names = {'Unipolar NRZ','Polar NRZ','Polar RZ','Manchester', ...
+         'Differential Manchester','AMI (bipolar NRZ)'};
+
+shorts = {'UNI-NRZ','POL-NRZ','POL-RZ','MAN','D-MAN','AMI'};
+
+col = [0.12 0.47 0.71;
+       0.84 0.15 0.16;
+       0.17 0.63 0.17;
+       0.58 0.40 0.74;
+       1.00 0.50 0.05;
+       0.09 0.75 0.81];
+
+nc = length(codes);
+
+%% ------------------------------------------------
+% TASK 19 - COMMON BIT SEQUENCE
+% -------------------------------------------------
+
+Nbits = 4096;
+
+% PRBS-15
+bits = prbs15(Nbits);
+
+demoBits = [1 0 1 1 0 0 1 0 1 1 1 0 0 0 1 0];
+
+valWord = [1 0 1 1 0 0 1 0];
+
+fprintf('\nBit stream: %d bits\n',Nbits);
+fprintf('Number of ones = %d\n',sum(bits));
+fprintf('Percentage of ones = %.2f %%\n\n',100*mean(bits));
+
+%% Encode all line codes
+
+x  = cell(1,nc);
+xd = cell(1,nc);
+xv = cell(1,nc);
+
+for i = 1:nc
+
+    x{i}  = lc_encode(bits,codes{i},L,A);
+    xd{i} = lc_encode(demoBits,codes{i},L,A);
+    xv{i} = lc_encode(valWord,codes{i},L,A);
+
+end
+
+%% ================================================================
+% FIGURE 1 - LINE CODE WAVEFORMS
+% ================================================================
+
+figure('Name','Figure 1 - Line Coding');
+
+nb = length(demoBits);
+
+subplot(7,1,1);
+hold on;
+grid on;
+
+stairs(0:nb-1,demoBits,'LineWidth',2);
+
+xlim([0 nb-1]);
+ylim([-0.2 1.2]);
+
+title('Common Bit Sequence');
+ylabel('Bits');
+
+for i = 1:nc
+
+    subplot(7,1,i+1);
+
+    [t,y] = step_arrays(xd{i},L,Tb);
+
+    stairs(t,y,'LineWidth',1.5);
+
+    grid on;
+    ylim([-1.5 1.5]);
+
+    ylabel(shorts{i});
+
+end
+
+xlabel('Time');
+
+%% ================================================================
+% TASK 20 - WELCH PSD
+% ================================================================
+
+nperseg = 64*L;
+
+f = cell(1,nc);
+P = cell(1,nc);
+
+for i = 1:nc
+
+    [f{i},P{i},nseg] = welch_psd( ...
+        x{i},fs,nperseg,0.5);
+
+end
+
+fprintf('Welch PSD calculated successfully.\n');
+fprintf('Number of segments = %d\n',nseg);
+
+%% ================================================================
+% FIGURE 2 - PSD VS THEORY
+% ================================================================
+
+figure('Name','Figure 2 - PSD');
+
+ft = linspace(0.0001,3,3000);
+
+for i = 1:nc
+
+    subplot(2,3,i);
+    hold on;
+    grid on;
+
+    m = f{i} <= 3;
+
+    plot(f{i}(m), ...
+        10*log10(max(P{i}(m),eps)/REF), ...
+        'LineWidth',1.2);
+
+    th = theory_psd(ft,codes{i},A,Tb);
+
+    plot(ft, ...
+        10*log10(max(th,eps)/REF), ...
+        'k--','LineWidth',1);
+
+    title(names{i});
+
+    xlabel('f / R_b');
+    ylabel('PSD (dB)');
+
+    xlim([0 3]);
+    ylim([-60 15]);
+
+end
+
+%% ================================================================
+% FIGURE 3 - PSD OVERLAY
+% ================================================================
+
+figure('Name','Figure 3 - PSD Overlay');
+
+hold on;
+grid on;
+
+for i = 1:nc
+
+    m = f{i} <= 2.5;
+
+    plot(f{i}(m), ...
+        10*log10(max(P{i}(m),eps)/REF), ...
+        'Color',col(i,:), ...
+        'LineWidth',1.3);
+
+end
+
+xlabel('Normalised Frequency f / R_b');
+ylabel('PSD (dB)');
+
+legend(names,'Location','best');
+
+title('PSD of All Line Codes');
+
+%% ================================================================
+% FIGURE 4 - DC DETAIL
+% ================================================================
+
+figure('Name','Figure 4 - DC Detail');
+
+hold on;
+grid on;
+
+for i = 1:nc
+
+    m = f{i} <= 0.30;
+
+    plot(f{i}(m), ...
+        10*log10(max(P{i}(m),eps)/REF), ...
+        'Color',col(i,:), ...
+        'LineWidth',1.5);
+
+end
+
+xlabel('f / R_b');
+ylabel('PSD (dB)');
+
+legend(names,'Location','best');
+
+title('Low Frequency / DC Detail');
+
+%% ================================================================
+% TASK 21 - RUNNING DIGITAL SUM
+% ================================================================
+
+NSHOW = min(400,length(x{1})/L);
+
+figure('Name','Figure 5 - Running Digital Sum');
+
+subplot(2,1,1);
+hold on;
+grid on;
+
+for i = 1:nc
+
+    rds = running_digital_sum(x{i},L);
+
+    plot(1:NSHOW,rds(1:NSHOW), ...
+        'Color',col(i,:), ...
+        'LineWidth',1.2);
+
+end
+
+xlabel('Bit Index');
+ylabel('RDS');
+
+legend(names,'Location','best');
+
+title('Running Digital Sum');
+
+subplot(2,1,2);
+hold on;
+grid on;
+
+for i = 2:nc
+
+    rds = running_digital_sum(x{i},L);
+
+    plot(1:NSHOW,rds(1:NSHOW), ...
+        'Color',col(i,:), ...
+        'LineWidth',1.2);
+
+end
+
+xlabel('Bit Index');
+ylabel('RDS');
+
+legend(names(2:end),'Location','best');
+
+%% ================================================================
+% TASK 22 - LONG RUN
+% ================================================================
+
+RUN = 24;
+
+runOnes  = ones(1,RUN);
+runZeros = zeros(1,RUN);
+
+longBits = [1 0 1 0 runOnes 1 0 runZeros 1 0 1 0];
+
+figure('Name','Figure 6 - Long Run');
+
+nb = length(longBits);
+
+subplot(7,1,1);
+
+stairs(0:nb-1,longBits,'LineWidth',2);
+
+ylim([-0.2 1.2]);
+grid on;
+
+ylabel('Bits');
+
+for i = 1:nc
+
+    subplot(7,1,i+1);
+
+    temp = lc_encode(longBits,codes{i},L,A);
+
+    [t,y] = step_arrays(temp,L,Tb);
+
+    stairs(t,y, ...
+        'Color',col(i,:), ...
+        'LineWidth',1.3);
+
+    ylim([-1.5 1.5]);
+
+    grid on;
+
+    ylabel(shorts{i});
+
+end
+
+xlabel('Time');
+
+%% ================================================================
+% FIGURE 7 - BASELINE WANDER
+% ================================================================
+
+figure('Name','Figure 7 - Baseline Wander');
+
+subplot(1,2,1);
+hold on;
+grid on;
+
+for i = 1:nc
+
+    temp = lc_encode(runOnes,codes{i},L,A);
+
+    rds = running_digital_sum(temp,L);
+
+    plot(1:RUN,rds, ...
+        'Color',col(i,:), ...
+        'LineWidth',1.3);
+
+end
+
+title('24 Consecutive Ones');
+
+xlabel('Bit');
+ylabel('RDS');
+
+legend(names,'Location','best');
+
+subplot(1,2,2);
+hold on;
+grid on;
+
+for i = 1:nc
+
+    temp = lc_encode(runZeros,codes{i},L,A);
+
+    rds = running_digital_sum(temp,L);
+
+    plot(1:RUN,rds, ...
+        'Color',col(i,:), ...
+        'LineWidth',1.3);
+
+end
+
+title('24 Consecutive Zeros');
+
+xlabel('Bit');
+ylabel('RDS');
+
+%% ================================================================
+% FIGURE 8 - POWER CONTAINMENT
+% ================================================================
+
+figure('Name','Figure 8 - Power Containment');
+
+hold on;
+grid on;
+
+for i = 1:nc
+
+    c = [0;
+         cumsum(0.5*(P{i}(2:end)+P{i}(1:end-1)) ...
+         .*diff(f{i}))];
+
+    if c(end) ~= 0
+        c = c/c(end);
+    end
+
+    m = f{i} <= 3;
+
+    plot(f{i}(m),100*c(m), ...
+        'Color',col(i,:), ...
+        'LineWidth',1.3);
+
+end
+
+plot([0 3],[90 90],'k:');
+plot([0 3],[99 99],'k:');
+
+xlabel('f / R_b');
+ylabel('Cumulative Power (%)');
+
+legend(names,'Location','best');
+
+title('Fractional Power Containment');
+
+%% ================================================================
+% FIGURE 9 - VALIDATION WORD
+% ================================================================
+
+figure('Name','Figure 9 - Validation');
+
+nb = length(valWord);
+
+subplot(7,1,1);
+
+stairs(0:nb-1,valWord,'LineWidth',2);
+
+ylim([-0.2 1.2]);
+grid on;
+
+title('Validation Word = 10110010');
+ylabel('Bits');
+
+for i = 1:nc
+
+    subplot(7,1,i+1);
+
+    [t,y] = step_arrays(xv{i},L,Tb);
+
+    stairs(t,y, ...
+        'Color',col(i,:), ...
+        'LineWidth',2);
+
+    ylim([-1.6 1.6]);
+
+    grid on;
+
+    ylabel(shorts{i});
+
+end
+
+xlabel('Time');
+
+%% ================================================================
+% VALIDATION TABLE
+% ================================================================
+
+fprintf('\n');
+fprintf('=============================================\n');
+fprintf(' VALIDATION WORD = 10110010\n');
+fprintf('=============================================\n');
+
+for i = 1:nc
+
+    s = transition_stats(xv{i},L);
+
+    fprintf('%-25s : %d transitions\n', ...
+        names{i},s.transitions);
+
+end
+
+%% ================================================================
+% PARSEVAL CHECK
+% ================================================================
+
+fprintf('\n');
+fprintf('=============================================\n');
+fprintf(' PARSEVAL CHECK\n');
+fprintf('=============================================\n');
+
+for i = 1:nc
+
+    pt = mean(x{i}.^2);
+
+    pf = 2*trapz(f{i},P{i});
+
+    error_percent = 100*(pf-pt)/pt;
+
+    fprintf('%-25s Time = %.4f   PSD = %.4f   Error = %.2f %%\n', ...
+        names{i},pt,pf,error_percent);
+
+end
+
+%% ================================================================
+% FIGURE 10 - DC TEST
+% ================================================================
+
+segBits = [16 32 64 128 256];
+
+sel = [1 2 4 6];
+
+figure('Name','Figure 10 - DC Test');
+
+hold on;
+grid on;
+
+for a = 1:length(sel)
+
+    i = sel(a);
+
+    dc0 = zeros(size(segBits));
+
+    for b = 1:length(segBits)
+
+        [~,Pb] = welch_psd( ...
+            x{i}, ...
+            fs, ...
+            segBits(b)*L, ...
+            0.5);
+
+        dc0(b) = 10*log10(max(Pb(1),eps)/REF);
+
+    end
+
+    plot(segBits,dc0, ...
+        '-o', ...
+        'Color',col(i,:), ...
+        'LineWidth',1.5);
+
+end
+
+set(gca,'XScale','log');
+
+xlabel('Segment Length (bits)');
+ylabel('PSD at DC (dB)');
+
+legend(names(sel),'Location','best');
+
+title('DC Power vs Welch Segment Length');
+
+%% ================================================================
+% FINAL MESSAGE
+% ================================================================
+
+fprintf('\n');
+fprintf('=============================================\n');
+fprintf(' EXPERIMENT 6 COMPLETED SUCCESSFULLY\n');
+fprintf(' 10 figures generated.\n');
+fprintf('=============================================\n');
+
+end
+
+
+%% ========================================================================
+% FUNCTION 1 - PRBS-15 GENERATOR
+% ========================================================================
+
+function bits = prbs15(N)
+
+state = ones(1,15);
+
+bits = zeros(1,N);
+
+for k = 1:N
+
+    bits(k) = state(15);
+
+    feedback = xor(state(15),state(14));
+
+    state(2:15) = state(1:14);
+
+    state(1) = feedback;
+
+end
+
+bits = double(bits);
+
+end
+
+
+%% ========================================================================
+% FUNCTION 2 - LINE CODE ENCODER
+% ========================================================================
+
+function y = lc_encode(bits,code,L,A)
+
+bits = double(bits(:).');
+
+N = length(bits);
+
+y = zeros(1,N*L);
+
+switch lower(code)
+
+    case 'unrz'
+
+        for k = 1:N
+
+            idx = (k-1)*L+1:k*L;
+
+            y(idx) = A*bits(k);
+
+        end
+
+
+    case 'pnrz'
+
+        for k = 1:N
+
+            idx = (k-1)*L+1:k*L;
+
+            if bits(k) == 1
+                y(idx) = A;
+            else
+                y(idx) = -A;
+            end
+
+        end
+
+
+    case 'prz'
+
+        for k = 1:N
+
+            idx1 = (k-1)*L+1:(k-1)*L+L/2;
+            idx2 = (k-1)*L+L/2+1:k*L;
+
+            if bits(k) == 1
+                y(idx1) = A;
+            else
+                y(idx1) = -A;
+            end
+
+            y(idx2) = 0;
+
+        end
+
+
+    case 'man'
+
+        for k = 1:N
+
+            idx1 = (k-1)*L+1:(k-1)*L+L/2;
+            idx2 = (k-1)*L+L/2+1:k*L;
+
+            if bits(k) == 1
+                y(idx1) = A;
+                y(idx2) = -A;
+            else
+                y(idx1) = -A;
+                y(idx2) = A;
+            end
+
+        end
+
+
+    case 'dman'
+
+        level = -A;
+
+        for k = 1:N
+
+            idx1 = (k-1)*L+1:(k-1)*L+L/2;
+            idx2 = (k-1)*L+L/2+1:k*L;
+
+            if bits(k) == 0
+                level = -level;
+            end
+
+            y(idx1) = level;
+
+            level = -level;
+
+            y(idx2) = level;
+
+        end
+
+
+    case 'ami'
+
+        last = -A;
+
+        for k = 1:N
+
+            idx = (k-1)*L+1:k*L;
+
+            if bits(k) == 0
+
+                y(idx) = 0;
+
+            else
+
+                last = -last;
+
+                y(idx) = last;
+
+            end
+
+        end
+
+
+    otherwise
+
+        error('Unknown line code.');
+
+end
+
+end
+
+
+%% ========================================================================
+% FUNCTION 3 - STEP ARRAYS
+% ========================================================================
+
+function [t,y] = step_arrays(x,L,Tb)
+
+N = length(x);
+
+t = (0:N-1)/L*Tb;
+
+y = x;
+
+end
+
+
+%% ========================================================================
+% FUNCTION 4 - WELCH PSD
+% ========================================================================
+
+function [f,P,nseg] = welch_psd(x,fs,nperseg,overlap)
+
+x = x(:);
+
+N = length(x);
+
+step = max(1,round(nperseg*(1-overlap)));
+
+starts = 1:step:(N-nperseg+1);
+
+nseg = length(starts);
+
+if nseg == 0
+    error('Signal is shorter than Welch segment.');
+end
+
+% Hamming window
+
+w = 0.54 - 0.46*cos( ...
+    2*pi*(0:nperseg-1)'/(nperseg-1));
+
+U = sum(w.^2);
+
+P = zeros(nperseg/2+1,1);
+
+for k = 1:nseg
+
+    idx = starts(k):starts(k)+nperseg-1;
+
+    segment = x(idx);
+
+    segment = segment - mean(segment);
+
+    X = fft(segment.*w);
+
+    S = abs(X).^2/(fs*U);
+
+    S = S(1:nperseg/2+1);
+
+    S(2:end-1) = 2*S(2:end-1);
+
+    P = P + S;
+
+end
+
+P = P/nseg;
+
+f = (0:nperseg/2)'*fs/nperseg;
+
+end
+
+
+%% ========================================================================
+% FUNCTION 5 - THEORETICAL PSD
+% ========================================================================
+
+function P = theory_psd(f,code,A,Tb)
+
+Rb = 1/Tb;
+
+f = abs(f);
+
+s = sinc(f/Rb);
+
+switch lower(code)
+
+    case 'unrz'
+
+        P = A^2*Tb/4*s.^2;
+
+
+    case 'pnrz'
+
+        P = A^2*Tb*s.^2;
+
+
+    case 'prz'
+
+        P = A^2*Tb/4*sinc(f/(2*Rb)).^2;
+
+
+    case 'man'
+
+        P = A^2*Tb .* ...
+            sinc(f/(2*Rb)).^2 .* ...
+            sin(pi*f/(2*Rb)).^2;
+
+
+    case 'dman'
+
+        P = A^2*Tb .* ...
+            sinc(f/(2*Rb)).^2 .* ...
+            sin(pi*f/(2*Rb)).^2;
+
+
+    case 'ami'
+
+        P = A^2*Tb .* ...
+            sinc(f/Rb).^2 .* ...
+            sin(pi*f/Rb).^2;
+
+
+    otherwise
+
+        P = zeros(size(f));
+
+end
+
+end
+
+
+%% ========================================================================
+% FUNCTION 6 - RUNNING DIGITAL SUM
+% ========================================================================
+
+function rds = running_digital_sum(x,L)
+
+Nbits = floor(length(x)/L);
+
+rds = zeros(1,Nbits);
+
+for k = 1:Nbits
+
+    idx = (k-1)*L+1:k*L;
+
+    rds(k) = sum(x(idx))/L;
+
+end
+
+rds = cumsum(rds);
+
+end
+
+
+%% ========================================================================
+% FUNCTION 7 - TRANSITION STATISTICS
+% ========================================================================
+
+function s = transition_stats(x,L)
+
+x = x(:).';
+
+transitions = sum(x(2:end) ~= x(1:end-1));
+
+Nbits = floor(length(x)/L);
+
+s.transitions = transitions;
+
+s.per_bit = transitions/Nbits;
+
+flat = 1;
+
+longest = 1;
+
+for k = 2:length(x)
+
+    if x(k) == x(k-1)
+
+        flat = flat + 1;
+
+    else
+
+        flat = 1;
+
+    end
+
+    longest = max(longest,flat);
+
+end
+
+s.longest_flat_bits = longest/L;
+
+end
